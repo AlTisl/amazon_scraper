@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
-from console.database.interactions import db_create_table, db_truncate_table, db_insert
+from database.interactions import db_create_table, db_truncate_table, db_insert
 import logging
-from console.scraper import amazon_scraper
+from scraper import amazon_scraper
 
 logging.basicConfig(level=logging.INFO,
                     format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s')
@@ -28,4 +28,5 @@ def main() -> None:
     run(ns.query, ns.pages, ns.db)
 
 if __name__ == '__console__':
+
     main()
