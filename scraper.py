@@ -124,10 +124,7 @@ class amazon_scraper:
                 conditions.visibility_of_element_located(
                     (By.CSS_SELECTOR, "[data-component-type='s-search-results']")))
             cards = container.find_elements(By.CSS_SELECTOR, "[data-component-type='s-search-result']")
-#            products_data = [self._extract_data(card) for card in cards]
-            products_data = []
-            for card in cards:
-                products_data.append(self._extract_data(card))
+            products_data = [self._extract_data(card) for card in cards]
             self.products += [item for item in products_data if item]
         except TimeoutException:
             logging.error('Не вдалося завантажити результати пошуку')
@@ -172,4 +169,5 @@ class amazon_scraper:
             logging.error(f'Помилка під час пошуку даних: {e}')
             self.products.clear()
         finally:
+
             return self.products
