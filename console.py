@@ -27,6 +27,7 @@ def main() -> None:
     ns = parser.parse_args()
     run(ns.query, ns.pages, ns.db)
 
-if __name__ == '__console__':
+if __name__ == '__main__':
 
     main()
+
