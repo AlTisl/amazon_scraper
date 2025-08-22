@@ -170,6 +170,6 @@ class amazon_scraper:
             logging.error(f'Помилка під час пошуку даних: {e}')
             self.products.clear()
         finally:
-
+            self.driver.quit()
             return self.products
 

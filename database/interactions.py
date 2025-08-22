@@ -1,8 +1,9 @@
+from os import path
 from sqlite3 import connect, Row
 from typing import Any
 
 def db_create_table(db_name: str) -> None:
-    with connect('.\\' + db_name) as con:
+    with connect(path.join('.', db_name)) as con:
         con.execute('''
             CREATE TABLE IF NOT EXISTS products (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,7 +20,7 @@ def db_create_table(db_name: str) -> None:
 
 def db_insert(db_name: str, data: list[dict[str, Any]]) -> None:
     
-    with connect('.\\' + db_name) as con:
+    with connect(path.join('.', db_name)) as con:
         con.executemany('''
             INSERT INTO products(title, url, rating, reviews, current_price, base_price, delivery)
             VALUES(:title, :url, :rating, :reviews, :current_price, :original_price, :delivery_available)
@@ -27,7 +28,7 @@ def db_insert(db_name: str, data: list[dict[str, Any]]) -> None:
     con.close()
 
 def db_select_all(db_name: str) -> list[dict[str, Any]]:
-    with connect('.\\' + db_name) as con:
+    with connect(path.join('.', db_name)) as con:
         con.row_factory = Row
         row = con.execute('''
                     SELECT title, url, rating, reviews,
@@ -43,14 +44,14 @@ def db_select_all(db_name: str) -> list[dict[str, Any]]:
     return row
 
 def db_truncate_table(db_name: str) -> None:
-    with connect('.\\' + db_name) as con:
+    with connect(path.join('.', db_name)) as con:
         con.execute('DROP TABLE IF EXISTS products')
     con.close()
     db_create_table(db_name)
 
 # Розрахунок середньої ціни товарів з рейтингом більшим за 4
 def db_average_price(db_name: str) -> float:
-    with connect('.\\' + db_name) as con:
+    with connect(path.join('.', db_name)) as con:
         result = con.execute('''
                     SELECT AVG(CAST(current_price AS REAL)/100) AS avg_price
                     FROM products
@@ -60,7 +61,7 @@ def db_average_price(db_name: str) -> float:
 
 # Визначення товару з найбільшим дисконтом
 def db_max_discount(db_name: str) -> dict[str, Any]:
-    with connect('.\\' + db_name) as con:
+    with connect(path.join('.', db_name)) as con:
         con.row_factory = Row
         result = con.execute('''
                     SELECT title, url, rating, reviews,
@@ -79,8 +80,8 @@ def db_max_discount(db_name: str) -> dict[str, Any]:
     return result
 
 # Три товари з найкращим співвідношенням рейтингу та ціни
-def db_top_three(db_name: str) -> dict[str, Any]:
-    with connect('.\\' + db_name) as con:
+def db_top_three(db_name: str) -> list[dict[str, Any]]:
+    with connect(path.join('.', db_name)) as con:
         con.row_factory = Row
         result = con.execute('''
                     SELECT title, url, rating, reviews,
@@ -94,6 +95,6 @@ def db_top_three(db_name: str) -> dict[str, Any]:
                     WHERE current_price IS NOT NULL AND rating IS NOT NULL
                     ORDER BY (rating / current_price) DESC
                     LIMIT 3
-                    ''').fetchone()
+                    ''').fetchall()
     con.close()
     return result
