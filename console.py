@@ -1,7 +1,8 @@
 from argparse import ArgumentParser
 from database.interactions import db_create_table, db_truncate_table, db_insert
+from fake_useragent import FakeUserAgent
 import logging
-from scraper import amazon_scraper
+from scraper import AmazonScraper
 
 logging.basicConfig(level=logging.INFO,
                     format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s')
@@ -13,21 +14,17 @@ def argparser_init() -> ArgumentParser:
     ap.add_argument('--db', default='amazon.db')
     return ap
 
-def run(query: str, pages: int, db: str) -> None:
+def main(query: str, pages: int, db: str) -> None:
     db_create_table(db)
 
-    scraper = amazon_scraper(query, pages)
+    user_agent = FakeUserAgent(platforms='desktop').random
+    scraper = AmazonScraper(query, pages, user_agent)
     results = scraper.search_by_keyword()
     if len(results) > 0:
         db_truncate_table(db)
         db_insert(db, results)
 
-def main() -> None:
+if __name__ == '__main__':
     parser = argparser_init()
     ns = parser.parse_args()
-    run(ns.query, ns.pages, ns.db)
-
-if __name__ == '__main__':
-
-    main()
-
+    main(ns.query, ns.pages, ns.db)

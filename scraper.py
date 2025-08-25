@@ -1,6 +1,5 @@
 from decimal import Decimal
 import logging
-from random import choice, uniform
 import re
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
@@ -9,57 +8,64 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as conditions
 from selenium.webdriver.support.ui import WebDriverWait
-import time
-from typing import Any, Optional
+from typing import Any
+from utilities import random_delay
 
 BASE_URL = 'https://amazon.com'
 
-class amazon_scraper:
-    driver: Any
-    products: list[Any]
-    keyword: str
-    pages: int
+locators = {
+    'keyword_input': 'twotabsearchtextbox',
+    'keyword_submit': 'nav-search-submit-text',
+    'next_page_link': 'a.s-pagination-next',
+    'search_results': "[data-component-type='s-search-results']",
+    'search_item': "[data-component-type='s-search-result']",
+    'item_title': 'a > h2 > span',
+    'item_url': 'ancestor::a',
+    'item_rating': "[data-cy='reviews-ratings-slot'] > span",
+    'item_reviews': "[data-csa-c-slot-id='alf-reviews'] span",
+    'item_price': [".a-price:not([data-a-strike = 'true']) > .a-offscreen",
+                "[data-cy='secondary-offer-recipe'] .a-color-base"],
+    'item_original_price': ".a-price[data-a-strike = 'true'] > .a-offscreen",
+    'item_delivery': '.udm-primary-delivery-message > div'
+}
 
-    def __init__(self, query: str, max_pages: int) -> None:
-        self.driver = self._setup_driver()
-        self.products = []
-        self.keyword = query
-        self.pages = max_pages
+class AmazonScraper:
+    _driver: Any
+    _products: list[Any]
+    _keyword: str
+    _pages: int
+
+    def __init__(self, query: str, max_pages: int, user_agent: str) -> None:
+        self._driver = self._setup_driver(user_agent)
+        self._products = []
+        self._keyword = query
+        self._pages = max_pages
+        
     
-    def _setup_driver(self):
+    def _setup_driver(self, agent: str):
         options = Options()
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument('--headless')
-
-        user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        ]
-        options.add_argument(f'--user-agent={choice(user_agents)}')
+        options.add_argument(f'--user-agent={agent}')
 
         # Вимкнення зображень (для прискорення)
         prefs = {"profile.managed_default_content_settings.images": 2}
         options.add_experimental_option("prefs", prefs)
 
         return webdriver.Chrome(options=options)
-    
-    def _random_delay(self) -> None:
-        delay = uniform(1, 3)
-        time.sleep(delay)
 
     def _get_title_and_url(self, container: WebElement) -> tuple[str, str]:
-        title = container.find_element(By.CSS_SELECTOR, 'a > h2 > span')
-        link = title.find_element(By.XPATH, 'ancestor::a').get_attribute('href')
+        title = container.find_element(By.CSS_SELECTOR, locators['item_title'])
+        link = title.find_element(By.XPATH, locators['item_url']).get_attribute('href')
         assert link is not None
         return (title.text.strip(), link)
     
-    def _get_rating(self, container: WebElement) -> Optional[float]:
+    def _get_rating(self, container: WebElement) -> float|None:
         try:
             rating = container.find_element(By.CSS_SELECTOR,
-                                            "[data-cy='reviews-ratings-slot'] > span").get_attribute('innerHTML')
+                                            locators['item_rating']).get_attribute('innerHTML')
             return float(rating.split()[0]) if rating and len(rating) > 0 else None
         except NoSuchElementException:
             return None
@@ -67,7 +73,7 @@ class amazon_scraper:
     def _get_reviews(self, container: WebElement) -> int:
         try:
             reviews = container.find_element(By.CSS_SELECTOR,
-                                            "[data-csa-c-slot-id='alf-reviews'] span").get_attribute('innerHTML')
+                                            locators['item_reviews']).get_attribute('innerHTML')
             return int(reviews.replace(',', '')) if reviews and len(reviews) > 0 else 0
         except NoSuchElementException:
             return 0
@@ -75,17 +81,17 @@ class amazon_scraper:
     def _get_prices(self, container: WebElement) -> tuple[int, int]:
         # Є дві ціни: current price та original price
         try:
-            price = container.find_element(By.CSS_SELECTOR, ".a-price:not([data-a-strike = 'true']) > .a-offscreen").get_attribute('innerHTML')
+            price = container.find_element(By.CSS_SELECTOR, locators['item_price'][0]).get_attribute('innerHTML')
         except NoSuchElementException:
             price = '-1'
         try:
-            original_price = container.find_element(By.CSS_SELECTOR, ".a-price[data-a-strike = 'true'] > .a-offscreen").get_attribute('innerHTML')
+            original_price = container.find_element(By.CSS_SELECTOR, locators['item_original_price']).get_attribute('innerHTML')
         except NoSuchElementException:
             original_price = price
         if price == '-1':
             # Є лише одна ціна (зокрема, якщо локацією обрати Україну)
             try:
-                price = container.find_element(By.CSS_SELECTOR, "[data-cy='secondary-offer-recipe'] .a-color-base").get_attribute('innerHTML')
+                price = container.find_element(By.CSS_SELECTOR, locators['item_price'][1]).get_attribute('innerHTML')
             except NoSuchElementException:
                 price = '-1'
             original_price = price
@@ -97,7 +103,7 @@ class amazon_scraper:
     
     def _get_delivery(self, container: WebElement) -> bool:
         try:
-            delivery = container.find_element(By.CSS_SELECTOR, '.udm-primary-delivery-message > div').get_attribute('innerHTML')
+            delivery = container.find_element(By.CSS_SELECTOR, locators['item_delivery']).get_attribute('innerHTML')
             return delivery != ''
         except NoSuchElementException:
             return False
@@ -119,14 +125,14 @@ class amazon_scraper:
             return product
 
     def _scrape_page(self) -> None:
-        self._random_delay()
+        random_delay(1, 3)
         try:
-            container = WebDriverWait(self.driver, 10).until(
+            container = WebDriverWait(self._driver, 10).until(
                 conditions.visibility_of_element_located(
-                    (By.CSS_SELECTOR, "[data-component-type='s-search-results']")))
-            cards = container.find_elements(By.CSS_SELECTOR, "[data-component-type='s-search-result']")
+                    (By.CSS_SELECTOR, locators['search_results'])))
+            cards = container.find_elements(By.CSS_SELECTOR, locators['search_item'])
             products_data = [self._extract_data(card) for card in cards]
-            self.products += [item for item in products_data if item]
+            self._products += [item for item in products_data if item]
         except TimeoutException:
             logging.error('Не вдалося завантажити результати пошуку')
         except Exception as e:
@@ -134,8 +140,8 @@ class amazon_scraper:
     
     def _next_page(self) -> bool:
         try:
-            btn_next = WebDriverWait(self.driver, 10).until(
-                conditions.presence_of_element_located((By.CSS_SELECTOR, 'a.s-pagination-next')))
+            btn_next = WebDriverWait(self._driver, 10).until(
+                conditions.presence_of_element_located((By.CSS_SELECTOR, locators['next_page_link'])))
             btn_class = btn_next.get_attribute('class')
             assert btn_class is not None
             if 's-pagination-disabled' in btn_class:
@@ -147,29 +153,29 @@ class amazon_scraper:
 
     def search_by_keyword(self) -> list[dict[str, Any]]:
         try:
-            self.driver.get(BASE_URL)
-            self._random_delay()
+            self._driver.get(BASE_URL)
+            random_delay(1, 3)
 
             # Пошук за ключовим словом
-            input_search = WebDriverWait(self.driver, 10).until(
-                conditions.presence_of_element_located((By.ID, 'twotabsearchtextbox')))
+            input_search = WebDriverWait(self._driver, 10).until(
+                conditions.presence_of_element_located((By.ID, locators['keyword_input'])))
             input_search.clear()
-            input_search.send_keys(self.keyword)
-            btn_submit = WebDriverWait(self.driver, 10).until(
-                conditions.element_to_be_clickable((By.ID, 'nav-search-submit-text')))
+            input_search.send_keys(self._keyword)
+            btn_submit = WebDriverWait(self._driver, 10).until(
+                conditions.element_to_be_clickable((By.ID, locators['keyword_submit'])))
             btn_submit.click()
-            self._random_delay()
+            random_delay(1, 3)
 
             # Скрапінг даних з кожної сторінки
-            for page in range(1, self.pages+1):
+            for page in range(1, self._pages+1):
                 self._scrape_page()
-                if page == self.pages or not self._next_page():
+                if page == self._pages or not self._next_page():
                     break
 
         except Exception as e:
             logging.error(f'Помилка під час пошуку даних: {e}')
-            self.products.clear()
+            self._products.clear()
         finally:
-            self.driver.quit()
-            return self.products
+            self._driver.quit()
+            return self._products
 
